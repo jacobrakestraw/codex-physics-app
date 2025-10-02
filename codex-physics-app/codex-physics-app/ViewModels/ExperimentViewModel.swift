@@ -4,6 +4,7 @@ import Combine
 // Refine ObservableObject to those using the standard ObservableObjectPublisher
 private protocol DefaultObservableObject: ObservableObject where ObjectWillChangePublisher == ObservableObjectPublisher {}
 
+@MainActor
 final class ExperimentViewModel: ObservableObject {
     let objectWillChange = ObservableObjectPublisher()
     enum Phase {
@@ -20,7 +21,7 @@ final class ExperimentViewModel: ObservableObject {
     private let experiment: any Experiment
     private let sensorManager: SensorManager
     private var dataCollector: DataCollector?
-    private var timerCancellable: AnyCancellable?
+    private var timer: Timer?
     private var collectorCancellable: AnyCancellable?
     private var targetDuration: TimeInterval?
     private var startDate: Date?
@@ -29,6 +30,10 @@ final class ExperimentViewModel: ObservableObject {
         self.experiment = experiment
         self.sensorManager = sensorManager
         configureCollector()
+    }
+
+    deinit {
+        timer?.invalidate()
     }
 
     func start(runMode: ExperimentConfiguration.RunMode, customDuration: TimeInterval? = nil) {
@@ -58,8 +63,8 @@ final class ExperimentViewModel: ObservableObject {
     func stop() {
         guard phase == .running else { return }
         dataCollector?.stop()
-        timerCancellable?.cancel()
-        timerCancellable = nil
+        timer?.invalidate()
+        timer = nil
         phase = .completed
         remainingTime = targetDuration.map { max(0, $0 - elapsedTime) }
     }
@@ -67,6 +72,8 @@ final class ExperimentViewModel: ObservableObject {
     func reset() {
         dataCollector?.stop()
         dataCollector?.reset()
+        timer?.invalidate()
+        timer = nil
         phase = .idle
         elapsedTime = 0
         remainingTime = targetDuration
@@ -96,12 +103,12 @@ final class ExperimentViewModel: ObservableObject {
     }
 
     private func startTimer() {
-        timerCancellable?.cancel()
-        timerCancellable = Timer.publish(every: 0.05, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] date in
-                self?.updateTimers(referenceDate: date)
-            }
+        timer?.invalidate()
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            self?.updateTimers(referenceDate: Date())
+        }
+        self.timer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     private func updateTimers(referenceDate date: Date) {

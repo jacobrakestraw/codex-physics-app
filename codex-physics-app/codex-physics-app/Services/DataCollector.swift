@@ -29,9 +29,11 @@ final class AccelerometerMagnitudeCollector: DataCollector, ObservableObject {
         isCollecting = true
         startTime = Date()
         sensorManager.startAccelerometerUpdates()
-        timer = Timer.scheduledTimer(withTimeInterval: samplingInterval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: samplingInterval, repeats: true) { [weak self] _ in
             self?.sample()
         }
+        self.timer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     func stop() {
@@ -52,6 +54,10 @@ final class AccelerometerMagnitudeCollector: DataCollector, ObservableObject {
               let startTime else { return }
         let elapsed = Date().timeIntervalSince(startTime)
         let sample = SensorSample(timestamp: elapsed, value: magnitude)
-        dataSeries[0].samples.append(sample)
+        var updatedSeries = dataSeries
+        if !updatedSeries.isEmpty {
+            updatedSeries[0].samples.append(sample)
+            dataSeries = updatedSeries
+        }
     }
 }
